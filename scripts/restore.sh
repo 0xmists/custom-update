@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # Restore command for the custom-update skill.
 # Restores from a backup using the safest available method.
+# Uses the Hermes adapter layer for all Hermes-specific operations.
 
-set -euo pipefail
+set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 LIB_DIR="$SCRIPT_DIR/lib"
@@ -10,8 +11,9 @@ LIB_DIR="$SCRIPT_DIR/lib"
 source "$LIB_DIR/exit-codes.sh"
 source "$LIB_DIR/logging.sh"
 source "$LIB_DIR/git-utils.sh"
-source "$LIB_DIR/repo-locator.sh"
+source "$LIB_DIR/hermes-adapter.sh"
 source "$LIB_DIR/config.sh"
+source "$LIB_DIR/repo-locator.sh"
 source "$LIB_DIR/history.sh"
 source "$LIB_DIR/manifest.sh"
 
@@ -19,11 +21,9 @@ source "$LIB_DIR/manifest.sh"
 # Returns: 0 and echoes the path, or 1 if none found.
 _find_latest_backup() {
     local backup_dir
-    backup_dir=$(config_backup_dir)
-    if [[ ! -d "$backup_dir" ]]; then
-        return 1
-    fi
-    # Find the most recent backup directory (by name, which includes timestamp)
+    backup_dir=$(config_backup_dir) || return 1
+    [[ -d "$backup_dir" ]] || return 1
+
     find "$backup_dir" -maxdepth 1 -mindepth 1 -type d | sort -r | head -1
 }
 
@@ -48,27 +48,25 @@ _find_backup() {
 _detect_recovery_methods() {
     local backup_dir="$1"
     local methods=()
-
-    # Check for tag
     local backup_id
     backup_id=$(basename "$backup_dir")
     local tag_name="backup/$backup_id"
+
+    # Check for tag.
     if git_ref_exists "refs/tags/$tag_name" 2>/dev/null; then
         methods+=("tag")
     fi
 
-    # Check for bundle
+    # Check for bundle.
     if [[ -f "$backup_dir/backup.bundle" ]]; then
         methods+=("bundle")
     fi
 
-    # Check for patches
+    # Check for patches.
     if [[ -d "$backup_dir/patches" ]]; then
         local count
         count=$(find "$backup_dir/patches" -name '*.patch' | wc -l)
-        if (( count > 0 )); then
-            methods+=("patches")
-        fi
+        (( count > 0 )) && methods+=("patches")
     fi
 
     echo "${methods[*]}"
@@ -86,7 +84,6 @@ _restore_from_tag() {
 
     log_info "Restoring from tag: $tag_name"
 
-    # Create a restore branch from the tag
     if git branch "$restore_branch" "$tag_name" 2>/dev/null; then
         git checkout "$restore_branch" 2>/dev/null
         log_info "Created and switched to branch: $restore_branch"
@@ -109,14 +106,12 @@ _restore_from_bundle() {
 
     log_info "Restoring from bundle: $bundle_path"
 
-    # Create a restore branch from the bundle
     local temp_dir
     temp_dir=$(mktemp -d)
     if git clone "$bundle_path" "$temp_dir" 2>/dev/null; then
         local bundle_commit
         bundle_commit=$(cd "$temp_dir" && git rev-parse HEAD 2>/dev/null)
         if [[ -n "$bundle_commit" ]]; then
-            # Create branch from the bundle's commit
             git branch "$restore_branch" "$bundle_commit" 2>/dev/null
             git checkout "$restore_branch" 2>/dev/null
             log_info "Created and switched to branch: $restore_branch"
@@ -139,7 +134,6 @@ _restore_from_patches() {
 
     log_info "Restoring from patches: $patch_dir"
 
-    # Apply patches to current branch
     if git am --3way "$patch_dir"/*.patch 2>/dev/null; then
         log_info "Patches applied successfully"
         return 0
@@ -154,16 +148,17 @@ _restore_from_patches() {
 restore_main() {
     local backup_id="${1:-}"
 
-    # Load config
+    # Load config.
     config_load 2>/dev/null || true
+    hermes_resolve_root 2>/dev/null || true
 
-    # Locate Hermes repo
+    # Locate Hermes repo.
     if ! locate_hermes_repo; then
         return "$EXIT_REPO_NOT_FOUND"
     fi
     cd_hermes_repo || return "$EXIT_REPO_NOT_FOUND"
 
-    # Find backup
+    # Find backup.
     local backup_dir
     if [[ -n "$backup_id" ]]; then
         backup_dir=$(_find_backup "$backup_id")
@@ -181,7 +176,7 @@ restore_main() {
 
     log_info "Backup: $(basename "$backup_dir")"
 
-    # Detect available recovery methods
+    # Detect available recovery methods.
     local methods
     methods=$(_detect_recovery_methods "$backup_dir")
     if [[ -z "$methods" ]]; then
@@ -189,7 +184,7 @@ restore_main() {
         return "$EXIT_RESTORE_FAILURE"
     fi
 
-    # Display available methods and recommendation
+    # Display available methods and recommendation.
     echo ""
     echo "Available recovery methods:"
     for method in $methods; do
@@ -200,9 +195,8 @@ restore_main() {
         esac
     done
 
-    # Recommend the safest method
-    local recommended=""
-    local reason=""
+    # Recommend the safest method.
+    local recommended="" reason=""
     for method in $methods; do
         case "$method" in
             tag)
@@ -211,16 +205,10 @@ restore_main() {
                 break
                 ;;
             bundle)
-                if [[ -z "$recommended" ]]; then
-                    recommended="bundle"
-                    reason="Most complete recovery. Works even if the current repository is destroyed."
-                fi
+                [[ -z "$recommended" ]] && recommended="bundle" && reason="Most complete recovery. Works even if the current repository is destroyed."
                 ;;
             patches)
-                if [[ -z "$recommended" ]]; then
-                    recommended="patches"
-                    reason="Most flexible. Applies patches to the current branch."
-                fi
+                [[ -z "$recommended" ]] && recommended="patches" && reason="Most flexible. Applies patches to the current branch."
                 ;;
         esac
     done
@@ -233,17 +221,17 @@ restore_main() {
     echo "  $reason"
     echo ""
 
-    # Ask for confirmation
+    # Ask for confirmation.
     if ! config_confirm "Proceed with restore?"; then
         log_info "Restore cancelled"
         return "$EXIT_SUCCESS"
     fi
 
-    # Perform restore
+    # Perform restore.
     local result=1
     case "$recommended" in
-        tag)    _restore_from_tag "$backup_dir" || result=1 ;;
-        bundle) _restore_from_bundle "$backup_dir" || result=1 ;;
+        tag)     _restore_from_tag "$backup_dir" || result=1 ;;
+        bundle)  _restore_from_bundle "$backup_dir" || result=1 ;;
         patches) _restore_from_patches "$backup_dir" || result=1 ;;
     esac
 
@@ -261,5 +249,5 @@ restore_main() {
     fi
 }
 
-# Run the restore command
+# Run the restore command.
 restore_main "$@"

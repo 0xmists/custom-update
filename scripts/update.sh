@@ -14,111 +14,22 @@ LIB_DIR="$SCRIPT_DIR/lib"
 source "$LIB_DIR/exit-codes.sh"
 source "$LIB_DIR/logging.sh"
 source "$LIB_DIR/git-utils.sh"
+source "$LIB_DIR/hermes-adapter.sh"
 source "$LIB_DIR/repo-locator.sh"
 source "$LIB_DIR/config.sh"
+source "$LIB_DIR/remote-detector.sh"
 source "$LIB_DIR/history.sh"
 source "$LIB_DIR/update-state.sh"
 source "$LIB_DIR/backup-manager.sh"
+source "$LIB_DIR/patch-manager.sh"
+source "$LIB_DIR/manifest.sh"
+source "$LIB_DIR/verifier.sh"
 
 # ---------------------------------------------------------------------------
-# Phase helpers
+# Phase implementations (delegated to adapter / modules)
 # ---------------------------------------------------------------------------
 
-# Run the configured update provider (hermes update or git pull).
-# Returns: 0 on success, non-zero on failure. Echoes the provider's output.
-_run_provider_update() {
-    local provider="${CONFIG_UPDATE_PROVIDER:-hermes-update}"
-    case "$provider" in
-        hermes-update)
-            hermes update 2>&1
-            ;;
-        git-pull)
-            local upstream="${CONFIG_REMOTES_UPSTREAM:-origin}"
-            git pull "$upstream" main 2>&1
-            ;;
-        *)
-            log_error "Unknown update provider: $provider"
-            return "$EXIT_GENERAL_ERROR"
-            ;;
-    esac
-}
-
-# Verify Hermes starts correctly after an update.
-# Runs `hermes version` (which exercises the installed CLI + Python env).
-# Returns: 0 if Hermes is functional, 1 otherwise.
-_verify_hermes_starts() {
-    local ver
-    ver=$(hermes version 2>&1 | head -1) || true
-    if [[ -z "$ver" || "$ver" == *"Traceback"* || "$ver" == *"Error"* ]]; then
-        log_error "Hermes does not start after update (version output: $ver)"
-        return 1
-    fi
-    log_info "Hermes starts OK after update: $ver"
-    return 0
-}
-
-# Apply custom patches (no-op when there are none).
-# Returns: 0 on success, non-zero on failure.
-_run_apply() {
-    local base_ref patch_count
-    base_ref=$(git_merge_base "${CONFIG_REMOTES_UPSTREAM:-origin}/main" HEAD 2>/dev/null) || true
-    if [[ -z "$base_ref" ]]; then
-        base_ref=$(git_merge_base "${CONFIG_REMOTES_FORK:-fork}/main" HEAD 2>/dev/null) || true
-    fi
-    if [[ -n "$base_ref" ]]; then
-        patch_count=$(git_commit_count "$base_ref" HEAD 2>/dev/null || echo 0)
-    else
-        patch_count=0
-    fi
-
-    if [[ "${patch_count:-0}" -eq 0 ]]; then
-        log_info "No custom patches to apply (clean)"
-        return 0
-    fi
-
-    log_info "Applying $patch_count custom patch(es)..."
-    if patch_apply "$base_ref"; then
-        log_success "Patches applied"
-        return 0
-    else
-        log_error "Patch application failed (conflict or error)"
-        return "$EXIT_PATCH_CONFLICT"
-    fi
-}
-
-# Run health checks (doctor) for the current build.
-# Returns: 0 if healthy, 1 otherwise.
-_run_health_checks() {
-    if bash "$SCRIPT_DIR/doctor.sh" 2>&1; then
-        return 0
-    else
-        log_error "Health checks (doctor) failed"
-        return 1
-    fi
-}
-
-# Publish: push updated custom branch/commits to the configured remote.
-# Returns: 0 on success, non-zero on failure.
-_run_publish() {
-    local fork="${CONFIG_REMOTES_FORK:-fork}"
-    local branch
-    branch=$(git_current_branch 2>/dev/null) || branch="main"
-
-    log_info "Publishing updated build to $fork ($branch)..."
-    if git push "$fork" "$branch" 2>&1; then
-        log_success "Published $branch to $fork"
-        return 0
-    else
-        log_error "Failed to push $branch to $fork"
-        return "$EXIT_GENERAL_ERROR"
-    fi
-}
-
-# ---------------------------------------------------------------------------
-# Phase executors — each returns 0 on success, non-zero on failure.
-# On failure the caller sets the phase to "pending" and marks interrupted.
-# ---------------------------------------------------------------------------
-
+# Phase 1: Backup.
 _phase_backup() {
     log_info "=== Phase 1/5: Backup ==="
     update_state_set backup "in_progress"
@@ -143,6 +54,8 @@ _phase_backup() {
     return 0
 }
 
+# Phase 2: Update upstream Hermes.
+# Delegates to hermes-adapter.sh for all provider execution.
 _phase_update() {
     log_info "=== Phase 2/5: Update (upstream + dependencies) ==="
     update_state_set update "in_progress"
@@ -151,8 +64,10 @@ _phase_update() {
     prev_commit=$(git_current_commit_short)
 
     log_info "Running upstream update (this may take several minutes for dependency installation / Rust-C compilation)..."
+
+    # Delegate update execution entirely to the Hermes adapter.
     local out rc=0
-    out=$(_run_provider_update 2>&1) || rc=$?
+    out=$(hermes_execute_update 2>&1) || rc=$?
     echo "$out"
 
     if [[ $rc -ne 0 ]]; then
@@ -169,7 +84,8 @@ _phase_update() {
     fi
 
     # Verify Hermes starts correctly before allowing any custom code.
-    if ! _verify_hermes_starts; then
+    # Delegates verification to the Hermes adapter.
+    if ! hermes_verify_healthy; then
         log_error "Hermes does not start after update — aborting before applying custom patches"
         return "$EXIT_GENERAL_ERROR"
     fi
@@ -179,6 +95,7 @@ _phase_update() {
     return 0
 }
 
+# Phase 3: Apply custom patches.
 _phase_apply() {
     log_info "=== Phase 3/5: Apply (custom patches) ==="
     update_state_set apply "in_progress"
@@ -189,7 +106,27 @@ _phase_apply() {
         return "$EXIT_GENERAL_ERROR"
     fi
 
-    if ! _run_apply; then
+    # Check for custom patches in the latest verified backup.
+    local base_ref patch_count
+    base_ref=$(git_merge_base "${CONFIG_REMOTES_UPSTREAM:-origin}/main" HEAD 2>/dev/null) || true
+    if [[ -z "$base_ref" ]]; then
+        base_ref=$(git_merge_base "${CONFIG_REMOTES_FORK:-fork}/main" HEAD 2>/dev/null) || true
+    fi
+
+    if [[ -n "$base_ref" ]]; then
+        patch_count=$(git_commit_count "$base_ref" HEAD 2>/dev/null || echo 0)
+    else
+        patch_count=0
+    fi
+
+    if [[ "${patch_count:-0}" -eq 0 ]]; then
+        log_info "No custom patches to apply (clean)"; update_state_set apply "done"
+        log_success "Phase 3 complete: no custom patches (clean)"
+        return 0
+    fi
+
+    log_info "Applying $patch_count custom patch(es)..."
+    if ! patch_apply "$base_ref"; then
         log_error "Apply phase failed"
         return "$EXIT_PATCH_CONFLICT"
     fi
@@ -199,6 +136,8 @@ _phase_apply() {
     return 0
 }
 
+# Phase 4: Verify the custom build.
+# Delegates to the Hermes adapter and a standalone verify module.
 _phase_verify() {
     log_info "=== Phase 4/5: Verify (custom build health) ==="
     update_state_set verify "in_progress"
@@ -209,16 +148,19 @@ _phase_verify() {
         return "$EXIT_GENERAL_ERROR"
     fi
 
-    # Verify Hermes starts with custom changes applied.
-    if ! _verify_hermes_starts; then
+    # Delegate all health checks to the Hermes adapter.
+    if ! hermes_verify_healthy; then
         log_error "Hermes does not start with custom changes applied"
         return "$EXIT_GENERAL_ERROR"
     fi
 
-    # Run health checks.
-    if ! _run_health_checks; then
-        log_error "Health checks failed after custom build"
-        return "$EXIT_GENERAL_ERROR"
+    # Run doctor health checks (if available).
+    local doctor_script="$SCRIPT_DIR/doctor.sh"
+    if [[ -x "$doctor_script" ]]; then
+        if ! bash "$doctor_script" 2>&1; then
+            log_error "Health checks (doctor) failed after custom build"
+            return "$EXIT_GENERAL_ERROR"
+        fi
     fi
 
     update_state_set verify "done"
@@ -226,6 +168,7 @@ _phase_verify() {
     return 0
 }
 
+# Phase 5: Publish and cleanup.
 _phase_publish() {
     log_info "=== Phase 5/5: Publish (push + cleanup) ==="
     update_state_set publish "in_progress"
@@ -237,17 +180,23 @@ _phase_publish() {
     fi
 
     # Push updated custom branch/commits.
-    if ! _run_publish; then
+    local fork="${CONFIG_REMOTES_FORK:-fork}"
+    local branch
+    branch=$(git_current_branch 2>/dev/null) || branch="main"
+
+    log_info "Publishing updated build to $fork ($branch)..."
+    if ! git push "$fork" "$branch" 2>&1; then
         log_error "Publish phase failed: could not push to remote"
         return "$EXIT_GENERAL_ERROR"
     fi
+    log_success "Published $branch to $fork"
 
     # Update manifest/state files.
     log_info "Updating manifest and state files..."
     local backup_id
     backup_id=$(update_state_get backup_id)
     local bdir
-    bdir=$(config_backup_dir)/"$backup_id"
+    bdir="$(config_backup_dir)/$backup_id"
     if [[ -d "$bdir" && -f "$bdir/manifest.json" ]]; then
         manifest_update_tag_pushed "$bdir" "true" 2>/dev/null || true
     fi
@@ -267,6 +216,7 @@ _phase_publish() {
 
 update_main() {
     config_load 2>/dev/null || true
+    hermes_resolve_root 2>/dev/null || true
 
     if ! locate_hermes_repo; then
         return "$EXIT_REPO_NOT_FOUND"
@@ -310,7 +260,6 @@ update_main() {
         esac
 
         if [[ ${rc:-0} -ne 0 ]]; then
-            # Mark the failed phase as pending and record interruption.
             update_state_set "$phase" "pending"
             update_state_set interrupted "true"
             history_log "update_completed" "failed" "phase=$phase, rc=$rc, provider=${CONFIG_UPDATE_PROVIDER:-hermes-update}" ""

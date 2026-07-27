@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # Doctor command for the custom-update skill.
 # Verifies environment health before performing operations.
+# Uses the Hermes adapter layer for all Hermes-specific checks.
 
-set -euo pipefail
+set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 LIB_DIR="$SCRIPT_DIR/lib"
@@ -10,6 +11,7 @@ LIB_DIR="$SCRIPT_DIR/lib"
 source "$LIB_DIR/exit-codes.sh"
 source "$LIB_DIR/logging.sh"
 source "$LIB_DIR/git-utils.sh"
+source "$LIB_DIR/hermes-adapter.sh"
 source "$LIB_DIR/repo-locator.sh"
 source "$LIB_DIR/config.sh"
 source "$LIB_DIR/remote-detector.sh"
@@ -48,35 +50,34 @@ _check_command() {
 _check_remote_reachable() {
     local remote="$1"
 
-    if ! git_ref_exists "refs/remotes/$remote/HEAD" 2>/dev/null; then
-        # Try to fetch
-        if git fetch --dry-run "$remote" HEAD 2>/dev/null; then
-            return 0
-        fi
-        return 1
+    if git_ref_exists "refs/remotes/$remote/HEAD" 2>/dev/null; then
+        return 0
     fi
 
-    return 0
+    # Try a dry-run fetch.
+    if git fetch --dry-run "$remote" HEAD 2>/dev/null; then
+        return 0
+    fi
+    return 1
 }
 
 # Check GitHub authentication.
 # Returns: 0 if authenticated, 1 if not.
 _check_github_auth() {
-    # Check if gh CLI is available and authenticated
+    # Check if gh CLI is available and authenticated.
     if _check_command gh; then
         if gh auth status 2>/dev/null; then
             return 0
         fi
     fi
 
-    # Check if git can push to the fork (SSH or HTTPS with credentials)
-    # This is a best-effort check
+    # Check if git can push to the fork (SSH or HTTPS with creds).
     local fork_remote="${CONFIG_REMOTES_FORK:-fork}"
     if git push --dry-run "$fork_remote" HEAD 2>/dev/null; then
         return 0
     fi
 
-    # Check for SSH agent
+    # Check for SSH agent.
     if [[ -n "${SSH_AUTH_SOCK:-}" ]]; then
         return 0
     fi
@@ -93,7 +94,7 @@ doctor_main() {
     echo "Hermes Custom Doctor"
     echo ""
 
-    # 1. Check Git installed
+    # 1. Check Git installed.
     if git_check_installed; then
         local git_version
         git_version=$(git --version | awk '{print $3}')
@@ -103,18 +104,18 @@ doctor_main() {
         errors=$((errors + 1))
     fi
 
-    # 2. Locate Hermes repository
-    if locate_hermes_repo; then
-        printf '  ✓ Hermes repository found: %s\n' "$HERMES_REPO_ROOT"
+    # 2. Locate Hermes repository via adapter.
+    if hermes_resolve_root 2>/dev/null; then
+        printf '  ✓ Hermes root resolved: %s\n' "$HERMES_ROOT"
     else
-        printf '  ✗ Hermes repository not found\n'
+        printf '  ✗ Hermes root not found\n'
         errors=$((errors + 1))
         echo ""
         echo "Errors: $errors"
         return "$EXIT_VALIDATION_FAILURE"
     fi
 
-    # 3. Validate repository
+    # 3. Validate repository.
     if validate_hermes_repo; then
         printf '  ✓ Repository is valid\n'
     else
@@ -122,20 +123,20 @@ doctor_main() {
         errors=$((errors + 1))
     fi
 
-    # 4. Check current branch
+    # 4. Check current branch.
     local current_branch
-    if current_branch=$(git_current_branch); then
+    if current_branch=$(git_current_branch 2>/dev/null); then
         printf '  ✓ Current branch: %s\n' "$current_branch"
     else
         printf '  ✗ Detached HEAD state\n'
         warnings=$((warnings + 1))
     fi
 
-    # 5. Check remotes
+    # 5. Check remotes.
     if [[ -n "${CONFIG_REMOTES_UPSTREAM:-}" ]]; then
         if _check_remote_reachable "$CONFIG_REMOTES_UPSTREAM"; then
             local upstream_url
-            upstream_url=$(git_remote_url "$CONFIG_REMOTES_UPSTREAM")
+            upstream_url=$(git_remote_url "$CONFIG_REMOTES_UPSTREAM" 2>/dev/null)
             printf '  ✓ Upstream reachable (%s → %s)\n' "$CONFIG_REMOTES_UPSTREAM" "$upstream_url"
         else
             printf '  ✗ Upstream not reachable (%s)\n' "$CONFIG_REMOTES_UPSTREAM"
@@ -149,7 +150,7 @@ doctor_main() {
     if [[ -n "${CONFIG_REMOTES_FORK:-}" ]]; then
         if _check_remote_reachable "$CONFIG_REMOTES_FORK"; then
             local fork_url
-            fork_url=$(git_remote_url "$CONFIG_REMOTES_FORK")
+            fork_url=$(git_remote_url "$CONFIG_REMOTES_FORK" 2>/dev/null)
             printf '  ✓ Fork reachable (%s → %s)\n' "$CONFIG_REMOTES_FORK" "$fork_url"
         else
             printf '  ✗ Fork not reachable (%s)\n' "$CONFIG_REMOTES_FORK"
@@ -160,15 +161,7 @@ doctor_main() {
         warnings=$((warnings + 1))
     fi
 
-    # 6. Check GitHub authentication
-    if _check_github_auth; then
-        printf '  ✓ GitHub authentication: ✓\n'
-    else
-        printf '  ⚠ GitHub authentication: not verified\n'
-        warnings=$((warnings + 1))
-    fi
-
-    # 7. Check backup directory
+    # 6. Check backup directory.
     local backup_dir
     backup_dir=$(config_backup_dir)
     if [[ ! -d "$backup_dir" ]]; then
@@ -181,9 +174,9 @@ doctor_main() {
         errors=$((errors + 1))
     fi
 
-    # 8. Check disk space
+    # 7. Check disk space.
     local available_space
-    if available_space=$(_check_disk_space "$backup_dir"); then
+    if available_space=$(_check_disk_space "$backup_dir" 2>/dev/null); then
         local min_space=$((500 * 1024 * 1024))  # 500MB minimum
         if (( available_space >= min_space )); then
             local available_gb=$((available_space / 1024 / 1024 / 1024))
@@ -197,28 +190,24 @@ doctor_main() {
         warnings=$((warnings + 1))
     fi
 
-    # 9. Check git bundle
-    local bundle_output
-    bundle_output=$(git bundle --help 2>&1 || true)
-    if [[ "$bundle_output" == *"warning: failed to exec"* ]] || [[ "$bundle_output" == *"usage:"* ]]; then
+    # 8. Check git bundle.
+    if git bundle --help 2>&1 | grep -q "usage:"; then
         printf '  ✓ git bundle available\n'
     else
         printf '  ✗ git bundle not available\n'
         errors=$((errors + 1))
     fi
 
-    # 10. Check git am
-    local am_output
-    am_output=$(git am --help 2>&1 || true)
-    if [[ "$am_output" == *"warning: failed to exec"* ]] || [[ "$am_output" == *"usage:"* ]]; then
+    # 9. Check git am.
+    if git am --help 2>&1 | grep -q "usage:"; then
         printf '  ✓ git am available\n'
     else
         printf '  ✗ git am not available\n'
         errors=$((errors + 1))
     fi
 
-    # 11. Check git rerere
-    if git config --get rerere.enabled &>/dev/null; then
+    # 10. Check git rerere.
+    if git config --get rerere.enabled 2>/dev/null; then
         printf '  ✓ git rerere: enabled\n'
     else
         printf '  ⚠ git rerere: disabled\n'
@@ -239,5 +228,5 @@ doctor_main() {
     fi
 }
 
-# Run the doctor command
+# Run the doctor command.
 doctor_main "$@"

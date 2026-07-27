@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # Backup command for the custom-update skill.
 # Wraps the backup manager (creation, reuse, cleanup).
+# Uses the Hermes adapter layer for all Hermes-specific operations.
 
-set -euo pipefail
+set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 LIB_DIR="$SCRIPT_DIR/lib"
@@ -10,8 +11,9 @@ LIB_DIR="$SCRIPT_DIR/lib"
 source "$LIB_DIR/exit-codes.sh"
 source "$LIB_DIR/logging.sh"
 source "$LIB_DIR/git-utils.sh"
-source "$LIB_DIR/repo-locator.sh"
+source "$LIB_DIR/hermes-adapter.sh"
 source "$LIB_DIR/config.sh"
+source "$LIB_DIR/repo-locator.sh"
 source "$LIB_DIR/remote-detector.sh"
 source "$LIB_DIR/history.sh"
 source "$LIB_DIR/patch-manager.sh"
@@ -36,7 +38,6 @@ backup_main() {
             return "$EXIT_SUCCESS"
             ;;
         cleanup)
-            # Apply retention policy (protect newest verified, interrupted-update, unverified/failed).
             backup_cleanup
             return "$EXIT_SUCCESS"
             ;;
