@@ -1,0 +1,22 @@
+# Hermes Custom Skill Configuration
+# Version: 1.0.0
+
+# Remote names (auto-detected on first run)
+remotes:
+  upstream: ""
+  fork: ""
+
+# Update provider: hermes-update, git-pull, or custom
+update_provider: "hermes-update"
+
+# Backup settings
+backup_dir: "~/.hermes/custom-backups"
+backup_tag_prefix: "backup/"
+max_backups: 0  # 0 = unlimited
+auto_cleanup: true  # auto-remove old verified backups after a successful update
+enable_rerere: true
+enable_stash: true
+confirm_destructive: true
+
+# First-run state
+first_run_complete: false

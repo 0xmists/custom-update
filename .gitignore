@@ -1,0 +1,42 @@
+# Temporary files
+*.tmp
+*.temp
+*.bak
+*.swp
+*.swo
+*~
+
+# Logs
+*.log
+logs/
+
+# Caches
+.cache/
+__pycache__/
+*.pyc
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Editor directories
+.vscode/
+.idea/
+*.sublime-*
+
+# Generated state files (runtime artifacts)
+.update-state
+*.update-state
+
+# Bundle files (large binary artifacts, not tracked in source)
+# Uncomment if you don't want to commit bundles:
+# *.bundle
+
+# Environment files
+.env
+.env.*
+
+# Test artifacts
+test-output/
+.coverage
+.pytest_cache/
