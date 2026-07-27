@@ -1,0 +1,178 @@
+{
+  "schema_version": "1.0.0",
+  "last_updated": "2026-07-28",
+  "hermes_version": "v0.19.0",
+  "fork_remote": "0xmists/hermes-agent",
+  "fork_branch": "main",
+  "baseline_backup_id": "20260728-1785176237",
+  "features": [
+    {
+      "feature_id": "execution-state",
+      "name": "Execution State Management",
+      "required": true,
+      "files": [
+        "agent/execution_state.py",
+        "agent/tool_executor.py",
+        "gateway/platforms/base.py",
+        "gateway/platforms/webhook.py",
+        "gateway/run.py"
+      ],
+      "verification_method": "check_functions",
+      "verify_script": "scripts/lib/verify-execution-state.sh",
+      "expected_functions": [
+        "create_execution_marker",
+        "load_execution_marker",
+        "update_execution_marker",
+        "remove_execution_marker"
+      ],
+      "restore_method": "diff_against_backup",
+      "backup_commit": "542e847f5",
+      "upstream_compatibility": "compatible",
+      "upstream_notes": "v0.19.0 supports the same atomic JSON approach for execution markers.",
+      "doc_file": "registry/execution-state.md",
+      "date_introduced": "2026-07-27",
+      "last_updated": "2026-07-27",
+      "status": "Present"
+    },
+    {
+      "feature_id": "hermes-vault",
+      "name": "HermesVault Write Detection and Tracking",
+      "required": true,
+      "files": [
+        "agent/background_review.py"
+      ],
+      "verification_method": "check_vault_behavior",
+      "verify_script": "scripts/lib/verify-hermes-vault.sh",
+      "expected_checks": [
+        "review_toolsets includes file",
+        "notify_tools includes write_file",
+        "vault_write_detection exists in summarize loop",
+        "vault subfolder labels present",
+        "vault file summary format shows specific path",
+        "_MEMORY_REVIEW_PROMPT contains tracker instructions",
+        "_MEMORY_REVIEW_PROMPT contains write_file vs memory clarification",
+        "deny_msg_fmt includes file",
+        "user message includes file management tools"
+      ],
+      "restore_method": "apply_additive_changes",
+      "target_file": "agent/background_review.py",
+      "changes_count": 6,
+      "upstream_compatibility": "compatible",
+      "upstream_notes": "Upstream removed HermesVault awareness; this restoration adds it back in an additive way.",
+      "doc_file": "registry/hermes-vault.md",
+      "date_introduced": "2026-07-27",
+      "last_updated": "2026-07-28",
+      "status": "Adapted (restored for v0.19.0)"
+    },
+    {
+      "feature_id": "patch-manager",
+      "name": "Patch Export/Import with Lockfile Exclusion and Pre-Check",
+      "required": true,
+      "files": [
+        "scripts/lib/patch-manager.sh",
+        "scripts/apply.sh"
+      ],
+      "verification_method": "check_functions",
+      "expected_functions": [
+        "patch_find",
+        "patch_precheck"
+      ],
+      "expected_behavior": [
+        "lockfiles excluded during export",
+        "already-applied patches skipped during apply"
+      ],
+      "restore_method": "check_current_implementation",
+      "upstream_compatibility": "compatible",
+      "doc_file": "registry/patch-manager.md",
+      "date_introduced": "2026-07-27",
+      "last_updated": "2026-07-27",
+      "status": "Present"
+    },
+    {
+      "feature_id": "auto-confirm",
+      "name": "Restore --auto-confirm Flag",
+      "required": true,
+      "files": [
+        "scripts/restore.sh",
+        "scripts/menu.sh"
+      ],
+      "verification_method": "check_flag_propagation",
+      "restore_method": "check_current_implementation",
+      "upstream_compatibility": "compatible",
+      "doc_file": "registry/auto-confirm.md",
+      "date_introduced": "2026-07-27",
+      "last_updated": "2026-07-27",
+      "status": "Present"
+    },
+    {
+      "feature_id": "stale-branch-cleanup",
+      "name": "Stale Restore Branch Cleanup",
+      "required": true,
+      "files": [
+        "scripts/restore.sh"
+      ],
+      "verification_method": "check_stale_branch_detection",
+      "restore_method": "check_current_implementation",
+      "upstream_compatibility": "compatible",
+      "doc_file": "registry/stale-branch-cleanup.md",
+      "date_introduced": "2026-07-27",
+      "last_updated": "2026-07-27",
+      "status": "Present"
+    },
+    {
+      "feature_id": "doctor-checks",
+      "name": "Doctor Checks",
+      "required": true,
+      "files": [
+        "scripts/doctor.sh"
+      ],
+      "verification_method": "check_checks_count",
+      "expected_checks": 6,
+      "restore_method": "check_current_implementation",
+      "upstream_compatibility": "compatible",
+      "doc_file": "registry/doctor-checks.md",
+      "date_introduced": "2026-07-27",
+      "last_updated": "2026-07-27",
+      "status": "Present"
+    },
+    {
+      "feature_id": "resume-support",
+      "name": "Phase-Based Workflow Resume Support",
+      "required": true,
+      "files": [
+        "scripts/lib/update-state.sh",
+        "scripts/update.sh",
+        "scripts/backup.sh",
+        "scripts/menu.sh"
+      ],
+      "verification_method": "check_phase_functions",
+      "expected_functions": [
+        "get_current_phase",
+        "set_phase",
+        "clear_state"
+      ],
+      "restore_method": "check_current_implementation",
+      "upstream_compatibility": "compatible",
+      "doc_file": "registry/resume-support.md",
+      "date_introduced": "2026-07-27",
+      "last_updated": "2026-07-27",
+      "status": "Present"
+    },
+    {
+      "feature_id": "retention",
+      "name": "Backup Retention and Cleanup Policy",
+      "required": true,
+      "files": [
+        "scripts/lib/backup-manager.sh",
+        "scripts/config.sh"
+      ],
+      "verification_method": "check_retention_logic",
+      "restore_method": "check_current_implementation",
+      "upstream_compatibility": "compatible",
+      "doc_file": "registry/retention.md",
+      "date_introduced": "2026-07-27",
+      "last_updated": "2026-07-27",
+      "status": "Present"
+    }
+  ]
+}

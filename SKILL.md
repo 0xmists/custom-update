@@ -1,7 +1,7 @@
 ---
 name: custom-update
 description: "Manage custom Hermes modifications while staying up to date with upstream. Backup, update, apply, restore, and inspect your custom changes."
-version: "1.1.0"
+version: "1.1.2"
 author: "Hermes Agent"
 license: MIT
 platforms: [linux, macos]
@@ -208,3 +208,5 @@ Each backup contains:
 - [ARCHITECTURE.md](ARCHITECTURE.md) — detailed architecture and implementation guide
 - [references/exit-codes.md](references/exit-codes.md) — exit code reference
 - [references/backup-format.md](references/backup-format.md) — backup format specification
+- [registry/](registry/) — custom feature registry (source of truth for what this fork contains)
+- [registry/features.json](registry/features.json) — machine-readable feature manifest for restore verification
