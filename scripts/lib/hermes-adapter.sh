@@ -47,6 +47,7 @@ hermes_resolve_root() {
     # If already set and valid, use it.
     if [[ -n "${HERMES_ROOT:-}" ]] && [[ -d "$HERMES_ROOT" ]]; then
         log_debug "HERMES_ROOT already set: $HERMES_ROOT"
+        echo "$HERMES_ROOT"
         return 0
     fi
 
@@ -56,6 +57,7 @@ hermes_resolve_root() {
         if _hermes_is_valid_root "$candidate"; then
             HERMES_ROOT="$candidate"
             log_debug "Resolved HERMES_ROOT: $HERMES_ROOT"
+            echo "$HERMES_ROOT"
             return 0
         fi
     done
