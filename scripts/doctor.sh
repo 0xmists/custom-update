@@ -214,6 +214,43 @@ doctor_main() {
         warnings=$((warnings + 1))
     fi
 
+    # 11. Check restore.sh scripts are usable.
+    local hermes_root
+    hermes_root=$(hermes_resolve_root 2>/dev/null)
+    if [[ -n "$hermes_root" ]]; then
+        local custom_scripts_dir="$hermes_root/.hermes/skills/custom-update/scripts"
+        if [[ -d "$custom_scripts_dir" ]]; then
+            if [[ -f "$custom_scripts_dir/restore.sh" && -x "$custom_scripts_dir/restore.sh" ]]; then
+                printf '  ✓ restore.sh executable\n'
+            else
+                printf '  ⚠ restore.sh not executable (chmod +x may be needed)\n'
+                warnings=$((warnings + 1))
+            fi
+            if [[ -f "$custom_scripts_dir/list.sh" ]]; then
+                if bash "$custom_scripts_dir/list.sh" >/dev/null 2>&1; then
+                    printf '  ✓ list.sh works\n'
+                else
+                    printf '  ⚠ list.sh returned an error (fallback to directory listing available)\n'
+                    warnings=$((warnings + 1))
+                fi
+            fi
+        fi
+    fi
+
+    # 12. Check for stale restore branches.
+    if [[ -n "${hermes_root:-}" ]]; then
+        local stale_restore_branches
+        stale_restore_branches=$(git -C "${hermes_root:-.}" branch 2>/dev/null | grep '^  restore/' || true)
+        if [[ -n "$stale_restore_branches" ]]; then
+            printf '  ⚠ Stale restore branches found:\n'
+            while IFS= read -r branch; do
+                printf '    %s\n' "$(echo "$branch" | tr -d ' ')"
+            done <<< "$stale_restore_branches"
+            printf '    Run: git branch -D <branch> to clean up\n'
+            warnings=$((warnings + 1))
+        fi
+    fi
+
     echo ""
 
     if (( errors > 0 )); then

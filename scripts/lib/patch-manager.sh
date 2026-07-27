@@ -109,10 +109,37 @@ patch_verify() {
     return $failed
 }
 
-# Get list of patch files.
-# Usage: patch_list <patch_dir>
+# Find patch files, excluding generated lockfiles.
+# Usage: patch_find <patch_dir>
 # Returns: 0 and echoes patch file paths (one per line).
-patch_list() {
+# Excludes package-lock.json, yarn.lock, pnpm-lock.yaml since these
+# are generated artifacts, not custom changes.
+patch_find() {
     local patch_dir="$1"
-    find "$patch_dir" -name '*.patch' | sort
+    find "$patch_dir" -name '*.patch' ! -name 'package-lock.json.patch' ! -name 'yarn.lock.patch' ! -name 'pnpm-lock.yaml.patch' | sort
+}
+
+# Pre-scan patches against the current tree to detect which are already applied.
+# Usage: patch_precheck <patch_dir>
+# Returns: 0 and echoes "already_applied:<count> ready:<count>"
+# Per-patch results are echoed to stderr for the caller to parse.
+patch_precheck() {
+    local patch_dir="$1"
+    local already=0 ready=0
+
+    while IFS= read -r patch; do
+        [[ -f "$patch" ]] || continue
+        local name
+        name=$(basename "$patch")
+        if git apply --check "$patch" 2>/dev/null; then
+            echo "ready:$name" >&2
+            ready=$((ready + 1))
+        else
+            echo "already_applied:$name" >&2
+            already=$((already + 1))
+        fi
+    done < <(patch_find "$patch_dir")
+
+    echo "already_applied=$already ready=$ready"
+    return 0
 }

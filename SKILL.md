@@ -1,7 +1,7 @@
 ---
 name: custom-update
 description: "Manage custom Hermes modifications while staying up to date with upstream. Backup, update, apply, restore, and inspect your custom changes."
-version: "1.0.0"
+version: "1.1.0"
 author: "Hermes Agent"
 license: MIT
 platforms: [linux, macos]
@@ -72,19 +72,21 @@ The menu orchestrates all underlying commands behind the scenes. After completin
 
 The following commands remain available for advanced users and automation. They are the building blocks that the interactive menu orchestrates:
 
-| Command | Description |
-|---------|-------------|
-| `hermes custom backup` | Create a verified backup (patches + bundle + tag) |
-| `hermes custom update` | Update Hermes to latest upstream |
-| `hermes custom apply` | Reapply custom patches to updated Hermes |
-| `hermes custom restore` | Restore from a backup (safe, named branch) |
-| `hermes custom list` | List all available backups |
-| `hermes custom status` | Show current state |
-| `hermes custom diff` | Compare current vs upstream |
-| `hermes custom inspect <ID>` | Show detailed backup information |
-| `hermes custom doctor` | Verify environment health |
-| `hermes custom config` | Manage configuration |
-| `hermes custom history` | View operation audit trail |
+|| Command | Description |
+||---------|-------------|
+|| `hermes custom backup` | Create a verified backup (patches + bundle + tag) |
+|| `hermes custom update` | Update Hermes to latest upstream |
+|| `hermes custom apply` | Reapply custom patches to updated Hermes |
+|| `hermes custom restore` | Restore from a backup (safe, named branch) |
+|| `hermes custom list` | List all available backups |
+|| `hermes custom status` | Show current state |
+|| `hermes custom diff` | Compare current vs upstream |
+|| `hermes custom inspect <ID>` | Show detailed backup information |
+|| `hermes custom doctor` | Verify environment health |
+|| `hermes custom config` | Manage configuration |
+|| `hermes custom history` | View operation audit trail |
+
+> **Note:** If `hermes custom` CLI is not registered, the standalone scripts in `~/.hermes/skills/custom-update/scripts/` are used directly. The `doctor` command verifies this and falls back to directory listing if `list.sh` fails. |
 
 ## Menu Workflows
 

@@ -73,16 +73,29 @@ _detect_recovery_methods() {
 }
 
 # Restore from a Git tag.
-# Usage: _restore_from_tag <backup_dir>
+# Usage: _restore_from_tag <backup_dir> [--auto-confirm]
 # Returns: 0 on success, 1 on failure.
 _restore_from_tag() {
     local backup_dir="$1"
+    local auto_confirm="${2:-}"
     local backup_id
     backup_id=$(basename "$backup_dir")
     local tag_name="backup/$backup_id"
     local restore_branch="restore/$backup_id"
 
     log_info "Restoring from tag: $tag_name"
+
+    # Clean up stale restore branch from a previous failed attempt.
+    if git branch "$restore_branch" 2>/dev/null; then
+        log_warn "Restore branch $restore_branch already exists from a previous attempt."
+        if [[ "$auto_confirm" == "--auto-confirm" ]]; then
+            log_info "Auto-confirm: deleting stale branch $restore_branch"
+            git branch -D "$restore_branch" 2>/dev/null || true
+        else
+            log_error "Delete it manually: git branch -D $restore_branch"
+            return 1
+        fi
+    fi
 
     if git branch "$restore_branch" "$tag_name" 2>/dev/null; then
         git checkout "$restore_branch" 2>/dev/null
@@ -126,15 +139,40 @@ _restore_from_bundle() {
 }
 
 # Restore from exported patches.
-# Usage: _restore_from_patches <backup_dir>
+# Usage: _restore_from_patches <backup_dir> [--auto-confirm]
 # Returns: 0 on success, 1 on failure.
 _restore_from_patches() {
     local backup_dir="$1"
+    local auto_confirm="${2:-}"
     local patch_dir="$backup_dir/patches"
 
     log_info "Restoring from patches: $patch_dir"
 
-    if git am --3way "$patch_dir"/*.patch 2>/dev/null; then
+    # Filter out generated lockfile patches.
+    local filtered_patches=()
+    for p in "$patch_dir"/*.patch; do
+        [[ -f "$p" ]] || continue
+        local name
+        name=$(basename "$p")
+        case "$name" in
+            package-lock.json.patch|yarn.lock.patch|pnpm-lock.yaml.patch)
+                log_info "Skipping generated lockfile patch: $name"
+                continue
+                ;;
+        esac
+        filtered_patches+=("$p")
+    done
+
+    if (( ${#filtered_patches[@]} == 0 )); then
+        log_error "No applicable patches found (all were lockfiles or none exist)"
+        return 1
+    fi
+
+    # Build the argument list for git am.
+    local am_args=()
+    am_args+=(--3way)
+
+    if git am "${am_args[@]}" "${filtered_patches[@]}" 2>/dev/null; then
         log_info "Patches applied successfully"
         return 0
     else
@@ -230,9 +268,9 @@ restore_main() {
     # Perform restore.
     local result=1
     case "$recommended" in
-        tag)     _restore_from_tag "$backup_dir" || result=1 ;;
+        tag)     _restore_from_tag "$backup_dir" "--auto-confirm" || result=1 ;;
         bundle)  _restore_from_bundle "$backup_dir" || result=1 ;;
-        patches) _restore_from_patches "$backup_dir" || result=1 ;;
+        patches) _restore_from_patches "$backup_dir" "--auto-confirm" || result=1 ;;
     esac
 
     if [[ $result -eq 0 ]]; then
@@ -243,7 +281,7 @@ restore_main() {
         echo "Current commit: $(git_current_commit_short 2>/dev/null || echo 'unknown')"
         return "$EXIT_SUCCESS"
     else
-        log_error "Restore failed"
+        log_error "Restore failed (exit $result)"
         history_log "restore_performed" "failed" "restore from $recommended failed" "$(basename "$backup_dir")"
         return "$EXIT_RESTORE_FAILURE"
     fi

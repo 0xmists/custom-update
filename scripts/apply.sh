@@ -107,10 +107,25 @@ apply_main() {
 
     # Apply patches.
     local patch_files total_patches applied=0 failed=0
-    patch_files=$(patch_list "$patch_dir")
-    total_patches=$(echo "$patch_files" | wc -l)
+    patch_files=$(patch_find "$patch_dir")
+    total_patches=$(echo "$patch_files" | grep -c '.' || echo 0)
 
-    log_info "Applying $total_patches patches..."
+    # Pre-scan to see what's already applied upstream.
+    local precheck_result
+    precheck_result=$(patch_precheck "$patch_dir" 2>&1)
+    local already_count ready_count
+    already_count=$(echo "$precheck_result" | grep -o 'already_applied=[0-9]*' | cut -d= -f2)
+    ready_count=$(echo "$precheck_result" | grep -o 'ready=[0-9]*' | cut -d= -f2)
+
+    log_info "Patch precheck: $already_count already applied upstream, $ready_count ready to apply"
+
+    if (( ready_count == 0 )); then
+        log_info "All patches are already incorporated into upstream. Nothing to apply."
+        history_log "patches_applied" "success" "all-already-applied" "$(basename "$backup_dir")"
+        return "$EXIT_SUCCESS"
+    fi
+
+    log_info "Applying $ready_count of $total_patches patches..."
 
     while IFS= read -r patch; do
         [[ -f "$patch" ]] || continue

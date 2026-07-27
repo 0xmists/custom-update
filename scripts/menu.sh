@@ -294,7 +294,7 @@ _do_restore() {
         echo ""
         echo "Restoring from: $selected"
         echo ""
-        if bash "$RESTORE_SH" "$selected" 2>&1; then
+        if bash "$RESTORE_SH" "$selected" --auto-confirm 2>&1; then
             echo -e "${C_GREEN}✓ Restore completed${C_RESET}"
         else
             echo -e "${C_RED}✗ Restore failed${C_RESET}"
