@@ -17,6 +17,11 @@ source "$LIB_DIR/repo-locator.sh"
 source "$LIB_DIR/history.sh"
 source "$LIB_DIR/manifest.sh"
 
+# Locate the custom-update skill directory (parent of scripts/).
+# restore.sh lives at $SKILL_DIR/scripts/restore.sh.
+SKILL_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+REGISTRY_SCRIPT="$SKILL_DIR/scripts/verify_registry.sh"
+
 # Find the latest backup directory.
 # Returns: 0 and echoes the path, or 1 if none found.
 _find_latest_backup() {
@@ -274,12 +279,46 @@ restore_main() {
     esac
 
     if [[ $result -eq 0 ]]; then
-        log_success "Restore completed"
-        history_log "restore_performed" "success" "restored from $recommended" "$(basename "$backup_dir")"
-        echo ""
-        echo "Current branch: $(git_current_branch 2>/dev/null || echo 'unknown')"
-        echo "Current commit: $(git_current_commit_short 2>/dev/null || echo 'unknown')"
-        return "$EXIT_SUCCESS"
+        # ── Registry Restore Gate ──
+        # The restore gate is the canonical definition of a successful
+        # restore. Patch application, repository state, and syntax
+        # checks are supporting checks — not the final criteria.
+        #
+        # The workflow must never report "Restore complete" while any
+        # required feature remains unresolved.
+        log_info "Running Feature Registry restore gate..."
+
+        if [[ ! -x "$REGISTRY_SCRIPT" ]]; then
+            log_warn "verify_registry.sh not found or not executable at $REGISTRY_SCRIPT"
+            log_warn "Cannot verify custom features — proceeding without gate check"
+            gate_passed=1
+        else
+            # Run verify_registry.sh and capture its full output for the report.
+            gate_output=$("$REGISTRY_SCRIPT" 2>&1) || gate_passed=1
+        fi
+
+        if [[ "${gate_passed:-0}" -eq 0 ]]; then
+            # ── Restore gate PASSED ──
+            log_success "Restore completed"
+            log_success "Feature Registry restore gate PASSED"
+            history_log "restore_performed" "success" "restored from $recommended" "$(basename "$backup_dir")"
+            echo ""
+            echo "Current branch: $(git_current_branch 2>/dev/null || echo 'unknown')"
+            echo "Current commit: $(git_current_commit_short 2>/dev/null || echo 'unknown')"
+            return "$EXIT_SUCCESS"
+        else
+            # ── Restore gate FAILED ──
+            log_error "Restore gate FAILED — customized Hermes is NOT fully restored"
+            echo ""
+            echo "=== Restore Gate Failure Report ==="
+            echo "$gate_output"
+            echo ""
+            echo "The customized Hermes is not yet fully restored."
+            echo "Investigate the failed or missing features above, apply"
+            echo "manual migrations if needed, then re-run restore."
+            history_log "restore_performed" "failed" "restore gate failed for $recommended" "$(basename "$backup_dir")"
+            return "$EXIT_RESTORE_FAILURE"
+        fi
     else
         log_error "Restore failed (exit $result)"
         history_log "restore_performed" "failed" "restore from $recommended failed" "$(basename "$backup_dir")"
