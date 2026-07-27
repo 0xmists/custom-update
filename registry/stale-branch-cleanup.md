@@ -7,6 +7,7 @@
 **Last Updated:** 2026-07-27
 **Related Patches:** (perpetual improvement, no specific patch)
 
+**Version:** 1  
 ## Purpose
 
 When restoring from a backup, detect and handle stale `restore/<ID>` branches in the git repo. If a restore branch already exists (e.g., from a previous interrupted restore), force-recreate it instead of failing with exit code 5.

@@ -7,6 +7,7 @@
 **Last Updated:** 2026-07-27
 **Related Patches:** (perpetual improvement, no specific patch)
 
+**Version:** 1  
 ## Purpose
 
 Patch export and import with automatic lockfile exclusion (package-lock.json, yarn.lock, pnpm-lock.yaml) and patch pre-check for already-applied patches.

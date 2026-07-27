@@ -7,6 +7,7 @@
 **Last Updated:** 2026-07-27
 **Related Patches:** (core workflow feature)
 
+**Version:** 1  
 ## Purpose
 
 The custom-update skill uses a phase-based workflow (Backup → Update → Apply → Verify → Publish) with state tracking so that interrupted updates can resume from the last completed phase without re-running earlier steps.

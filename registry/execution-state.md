@@ -7,6 +7,7 @@
 **Last Updated:** 2026-07-27
 **Related Patches:** 0005
 
+**Version:** 2  
 ## Purpose
 
 Atomic JSON-based execution marker persistence and execution context propagation across the Hermes gateway pipeline. Enables the Hermes adapter layer (hermes_resolve_root, hermes_execute_update, hermes_verify_healthy) to coordinate background watcher tasks.

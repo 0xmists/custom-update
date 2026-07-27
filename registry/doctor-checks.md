@@ -7,6 +7,7 @@
 **Last Updated:** 2026-07-27
 **Related Patches:** (perpetual improvement, no specific patch)
 
+**Version:** 1  
 ## Purpose
 
 Environment health verification covering CLI registration, fork sync, stale restore branches, and lockfile-in-patches warnings. Doctor checks are additive — they warn but don't block operations, keeping the skill simple.

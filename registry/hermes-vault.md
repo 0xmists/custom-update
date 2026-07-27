@@ -7,6 +7,7 @@
 **Last Updated:** 2026-07-28 (restored for v0.19.0)
 **Related Patches:** 0001, 0002, 0003, 0004
 
+**Version:** 2  
 ## Purpose
 
 When the Hermes background review agent writes to HermesVault files, the user should see which vault file changed with a specific path. The review agent should automatically update `vault-write-tracker.md` after each vault write. The review prompt should clearly instruct the agent to use `write_file` (not `memory` tool) for vault writes.

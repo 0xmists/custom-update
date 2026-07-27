@@ -7,6 +7,7 @@
 **Last Updated:** 2026-07-27
 **Related Patches:** (core workflow feature)
 
+**Version:** 1  
 ## Purpose
 
 Manages backup cleanup according to a retention policy. Removes old verified backups beyond `max_backups` while protecting the newest verified backup, backups referenced by interrupted updates, and any unverified or failed backups.

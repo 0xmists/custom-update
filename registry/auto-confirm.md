@@ -7,6 +7,7 @@
 **Last Updated:** 2026-07-27
 **Related Patches:** (perpetual improvement, no specific patch)
 
+**Version:** 1  
 ## Purpose
 
 Non-interactive restore support via `--auto-confirm` flag, propagated from menu.sh through restore.sh to all subcommands. Fixes the hang-on-pipe issue when restore is invoked non-interactively.
