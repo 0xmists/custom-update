@@ -9,10 +9,15 @@ TEST_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$TEST_DIR/../.." && pwd)"
 LIB_DIR="$PROJECT_ROOT/scripts/lib"
 
-source "$LIB_DIR/backup-manager.sh"
+# Source only the libraries this test needs.
+# We do NOT source repo-locator.sh or hermes-adapter.sh here because
+# this test is about backup retention logic, not Hermes installation
+# detection. Directly source the minimal dependencies.
 source "$LIB_DIR/logging.sh"
-source "$LIB_DIR/config.sh"
+source "$LIB_DIR/exit-codes.sh"
 source "$LIB_DIR/atomic.sh"
+source "$LIB_DIR/config.sh"
+source "$LIB_DIR/backup-manager.sh"
 
 TMP_BACKUP_DIR=$(mktemp -d -t custom-update-test-backups.XXXXXX)
 CONFIG_BACKUP_DIR="$TMP_BACKUP_DIR"

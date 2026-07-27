@@ -4,7 +4,7 @@
 # No hardcoded paths remain — all resolution is delegated to hermes-adapter.sh.
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-LIB_DIR="$(dirname "$SCRIPT_DIR")"
+LIB_DIR="$(dirname "$SCRIPT_DIR")/lib"
 source "$LIB_DIR/logging.sh"
 source "$LIB_DIR/exit-codes.sh"
 source "$LIB_DIR/hermes-adapter.sh"

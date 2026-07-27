@@ -4,7 +4,7 @@
 # No update logic lives here — only the provider identity.
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-LIB_DIR="$(dirname "$SCRIPT_DIR")"
+LIB_DIR="$(cd "$(dirname "$SCRIPT_DIR")/.." && pwd)/scripts/lib"
 source "$LIB_DIR/logging.sh"
 source "$LIB_DIR/hermes-adapter.sh"
 source "$LIB_DIR/config.sh"
